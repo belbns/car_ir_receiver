@@ -3,6 +3,7 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
+  * Nikolay Belov, 2019
   ******************************************************************************
   * @attention
   *
@@ -24,25 +25,31 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
-#include "ir_codes.h"
+//#include "ir_codes.h"
+#include "flash.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef union {
+	uint8_t adcod[2];	// adcod[0] - address, adcod[1] - code
+	uint16_t adrcode;	// both
+} ir_codes;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/**
- * PWR	0x45
- * Mute	0x46
- * Mode 0x47
- * 1	0x44
- * 2	0x40
- * 3	0x43
- */
-#define CMD_BASE	0x40
+
+#define PAGE_63_ADDR 	0x0800FC00
+#define CODES_SIGNATURE	0x66AA
+#define CODES_MAX		25
+#define PULSES_MAX		99
+// duration connected state of Potentiometer, mS
+#define KEY_PULSE		150
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -64,6 +71,12 @@ uint8_t receiveComplete;        //Receive Complete Flag Bits
 uint8_t idx;                    //Number received for indexing
 uint8_t startflag;              //Indicates start of reception
 char sndbuf[128];
+ir_codes butt_codes[CODES_MAX];	// signature + IR codes array
+
+uint8_t teachingFlag = 0;		//
+uint8_t teach_counter = 0;
+//uint8_t ir_address = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,8 +86,12 @@ static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-uint8_t decode_package(void);
+ir_codes decode_package(void);
+uint8_t get_pulses(ir_codes adcom);
+void led_blink(uint8_t cnt);
 void BufferTransfer(char *buf, uint8_t sz);
+void save_codes_to_flash(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -126,15 +143,31 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+
 	receiveComplete = 0;
 	startflag = 0;
-	LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
+	LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);	// break Potentiometer out
+
+	// FLASH read
+	uint32_t addr = PAGE_63_ADDR;
+	for (uint8_t i = 0; i < (CODES_MAX); i++)
+	{
+		butt_codes[i].adrcode = flash_read(addr);
+		addr += 2;
+	}
+
+	if (butt_codes[0].adrcode != CODES_SIGNATURE) {
+		// saved array not exists -> Set Teaching mode
+		teachingFlag = 1;
+		teach_counter = 1;
+		led_blink(4);
+	}
 
   /**************************/
     /* Start pulse generation */
     /**************************/
     /* Enable channel 1 */
-    LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1);
+    LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1);	// ???
     LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1N);
 
     /* Enable TIM3 outputs */
@@ -143,24 +176,21 @@ int main(void)
     /* Enable auto-reload register preload */
     LL_TIM_EnableARRPreload(TIM1);
 
-    /* Force update generation */
-    //LL_TIM_GenerateEvent_UPDATE(TIM1);
-
     LL_TIM_EnableIT_UPDATE(TIM1);
 
-    // Resistor to 0
+    // Set Potentiometer to 0
     LL_TIM_DisableCounter(TIM1);
-	LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0);
+	LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0);	// count down
 	LL_TIM_SetRepetitionCounter(TIM1, 99);
-	LL_TIM_GenerateEvent_UPDATE(TIM1);
+	LL_TIM_GenerateEvent_UPDATE(TIM1);	// update RCR
 	flag_pulse = 1;
 	LL_TIM_EnableCounter(TIM1);
-
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+	ir_codes ircode;
 
   while (1)
   {
@@ -169,70 +199,105 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  if (receiveComplete)	// packet received
 	  {
-		  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_13);
-		  uint8_t code = decode_package();	// 0xFF - broken IR package (code != ~code)
-		  if (code < 127)
+		  ircode = decode_package();	// 0xFF - broken IR package (code != ~code)
+		  if (ircode.adcod[1] < 0xFF)
 		  {
-			  int8_t npulses = code_table[code];
-			  while (flag_pulse)
+			  if (teachingFlag)
 			  {
-				  LL_mDelay(4);
+				  if (teach_counter < CODES_MAX)
+				  {
+					  butt_codes[teach_counter].adrcode = ircode.adrcode;
+					  teach_counter++;
+				  }
+				  if (teach_counter == CODES_MAX)
+				  {
+					  led_blink(3);	// 3 - save codes and switch to work mode
+					  save_codes_to_flash();
+					  teachingFlag = 0;
+					  teach_counter = 1;
+				  }
+				  else
+				  {
+					  led_blink(2);	// 2 - expect next code
+				  }
 			  }
-			  uint8_t pulses = 0;
-			  int8_t d = curr_count - npulses;
-			  if ( d != 0)
+			  else	// work mode
 			  {
-				  if (d > 0)	// count down
-				  {
-					  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0);
-					  pulses = d;
-					  if (pulses > curr_count)
-					  {
-						  curr_count = 0;
-					  }
-					  else
-					  {
-						  curr_count -= pulses;
-					  }
-				  }
-				  else	// count up
-				  {
-					  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_0);
-					  pulses = -d;
-					  if ((curr_count + pulses) > 99)
-					  {
-						  curr_count = 99;
-					  }
-					  else
-					  {
-						  curr_count += pulses;
-					  }
-				  }
-				  LL_TIM_SetRepetitionCounter(TIM1, pulses - 1);
-				  LL_TIM_GenerateEvent_UPDATE(TIM1);
-				  flag_pulse = 1;
-				  LL_TIM_EnableCounter(TIM1);
+				  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_13);
 
-				  receiveComplete = 0;
-				  startflag = 0;
-
+				  int8_t npulses = get_pulses(ircode);
 				  while (flag_pulse)
 				  {
 					  LL_mDelay(4);
 				  }
-				  // push button
-				  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);
-				  LL_mDelay(150);
-				  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
+				  uint8_t pulses = 0;
+				  int8_t d = curr_count - npulses;
+				  if ( d != 0)
+				  {
+					  if (d > 0)	// count down
+					  {
+						  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0);
+						  pulses = d;
+						  if (pulses > curr_count)
+						  {
+							  curr_count = 0;
+						  }
+						  else
+						  {
+							  curr_count -= pulses;
+						  }
+					  }
+					  else	// count up
+					  {
+						  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_0);
+						  pulses = -d;
+						  if ((curr_count + pulses) > PULSES_MAX)
+						  {
+							  curr_count = PULSES_MAX;
+						  }
+						  else
+						  {
+							  curr_count += pulses;
+						  }
+					  }
+					  LL_TIM_SetRepetitionCounter(TIM1, pulses - 1);
+					  LL_TIM_GenerateEvent_UPDATE(TIM1);	// update RCR
+					  flag_pulse = 1;
+					  LL_TIM_EnableCounter(TIM1);
 
+					  receiveComplete = 0;
+					  startflag = 0;
+
+					  while (flag_pulse)
+					  {
+						  LL_mDelay(4);
+					  }
+					  // connect Potentiometer out
+					  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);
+					  LL_mDelay(KEY_PULSE);
+					  // break Potentiometer out
+					  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
+				  }
+				  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_13);
 			  }
 		  }
 		  receiveComplete = 0;
 		  startflag = 0;
-		  BufferTransfer(sndbuf, 37);	  }
+		  BufferTransfer(sndbuf, 32);
+	  }	// if (receiveComplete)
 	  else
 	  {
-		  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_13);
+		  // Check if Teaching mode button is pressed
+		  if (!LL_GPIO_IsInputPinSet(GPIOA, LL_GPIO_PIN_4))
+		  {
+			  if (!teachingFlag)
+			  {
+				  // Set Teaching mode
+				  teachingFlag = 1;
+				  teach_counter = 1;
+				  led_blink(4);
+			  }
+		  }
 	  }
 
   }
@@ -486,7 +551,7 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_1|LL_GPIO_PIN_2;
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_4;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
   LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -528,6 +593,18 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void led_blink(uint8_t cnt)
+{
+	for (uint8_t i = 0; i < cnt; i++)
+	{
+		LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_13);
+		LL_mDelay(200);
+		LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_13);
+		LL_mDelay(200);
+	}
+}
+
 void BufferTransfer(char *buf, uint8_t sz)
 {
 	for (uint8_t i = 0; i < sz; i++)
@@ -544,15 +621,48 @@ void BufferTransfer(char *buf, uint8_t sz)
 	while (!LL_USART_IsActiveFlag_TC(USART1)) {};
 }
 
+void save_codes_to_flash(void)
+{
+	butt_codes[0].adrcode = CODES_SIGNATURE;
+	uint32_t addr = PAGE_63_ADDR;
+	flash_unlock();
+	flash_erase_page(PAGE_63_ADDR);
+	flash_lock();
 
+	flash_unlock();
+	for (uint8_t i = 0; i < CODES_MAX; i++)
+	{
+		flash_write(addr, butt_codes[i].adrcode);
+		addr += 2;
+	}
+	flash_lock();
+}
 
-uint8_t decode_package(void)
+uint8_t get_pulses(ir_codes adcom)
+{
+	uint8_t res = 0;
+
+	for (uint8_t i = 1; i < CODES_MAX; i++)
+	{
+		if ((butt_codes[i].adcod[1] == adcom.adcod[1])
+				&& (butt_codes[i].adcod[0] == adcom.adcod[0]))
+		{
+			res = i * 4;
+			break;
+		}
+	}
+	return res;
+}
+
+ir_codes decode_package(void)
 {
 	uint8_t i, j;
-    //idx starts with 1 to indicate that the synchronization header time isnot handled
+    // idx starts with 1 to indicate that
+	// the synchronization header time is not handled
     uint8_t idx = 1;
     uint8_t temp = 0;
     uint8_t remote_code[4];
+    ir_codes res;
 
     for(i=0; i<4; i++)
     {
@@ -573,18 +683,20 @@ uint8_t decode_package(void)
         }
     }
     // The array records control codes, each key is different
-    sprintf(sndbuf, "A1:%02x A2:%02x C1:%02x C2:%02x Cmd:%03d P:%02d\n",
+    sprintf(sndbuf, "A1:%02x A2:%02x C1:%02x C2:%02x Cmd:%03d\n",
     	remote_code[0], remote_code[1], remote_code[2], remote_code[3],
-		remote_code[2], code_table[remote_code[2]]);
+		remote_code[2]);
 
     if ((remote_code[2] | remote_code[3]) == 0xFF)
     {
-    	return remote_code[2];
+    	res.adcod[0] = remote_code[0];
+    	res.adcod[1] = remote_code[2];
     }
     else
     {
-    	return 0xFF;
+    	res.adrcode = 0xFFFF;
     }
+    return res;
 }
 
 /* USER CODE END 4 */
