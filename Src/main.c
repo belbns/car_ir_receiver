@@ -146,7 +146,7 @@ int main(void)
 
 	receiveComplete = 0;
 	startflag = 0;
-	LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);	// break Potentiometer out
+	LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);	// break Potentiometer out
 
 	// FLASH read
 	uint32_t addr = PAGE_63_ADDR;
@@ -211,7 +211,7 @@ int main(void)
 				  }
 				  if (teach_counter == CODES_MAX)
 				  {
-					  led_blink(3);	// 3 - save codes and switch to work mode
+					  led_blink(5);	// 5 - save codes and switch to work mode
 					  save_codes_to_flash();
 					  teachingFlag = 0;
 					  teach_counter = 1;
@@ -223,7 +223,7 @@ int main(void)
 			  }
 			  else	// work mode
 			  {
-				  LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_13);
+				  LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1);
 
 				  int8_t npulses = get_pulses(ircode);
 				  while (flag_pulse)
@@ -273,12 +273,12 @@ int main(void)
 						  LL_mDelay(4);
 					  }
 					  // connect Potentiometer out
-					  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);
+					  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
 					  LL_mDelay(KEY_PULSE);
 					  // break Potentiometer out
-					  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
+					  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);
 				  }
-				  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_13);
+				  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1);
 			  }
 		  }
 		  receiveComplete = 0;
@@ -310,9 +310,9 @@ int main(void)
   */
 void SystemClock_Config(void)
 {
-  LL_FLASH_SetLatency(LL_FLASH_LATENCY_2);
+  LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
 
-   if(LL_FLASH_GetLatency() != LL_FLASH_LATENCY_2)
+  if(LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0)
   {
     Error_Handler();  
   }
@@ -323,7 +323,7 @@ void SystemClock_Config(void)
   {
     
   }
-  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSE_DIV_1, LL_RCC_PLL_MUL_9);
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSE_DIV_1, LL_RCC_PLL_MUL_2);
   LL_RCC_PLL_Enable();
 
    /* Wait till PLL is ready */
@@ -341,9 +341,9 @@ void SystemClock_Config(void)
   {
   
   }
-  LL_Init1msTick(72000000);
+  LL_Init1msTick(16000000);
   LL_SYSTICK_SetClkSource(LL_SYSTICK_CLKSOURCE_HCLK);
-  LL_SetSystemCoreClock(72000000);
+  LL_SetSystemCoreClock(16000000);
 }
 
 /**
@@ -374,7 +374,7 @@ static void MX_TIM1_Init(void)
   /* USER CODE BEGIN TIM1_Init 1 */
 
   /* USER CODE END TIM1_Init 1 */
-  TIM_InitStruct.Prescaler = 71;
+  TIM_InitStruct.Prescaler = 15;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
   TIM_InitStruct.Autoreload = 7;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
@@ -451,7 +451,7 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 1 */
 
   /* USER CODE END TIM2_Init 1 */
-  TIM_InitStruct.Prescaler = 71;
+  TIM_InitStruct.Prescaler = 15;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
   TIM_InitStruct.Autoreload = 99;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
@@ -538,17 +538,17 @@ static void MX_GPIO_Init(void)
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOB);
 
   /**/
-  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_13);
+  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1);
 
   /**/
   LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0|LL_GPIO_PIN_1);
 
   /**/
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_13;
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_1;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = LL_GPIO_PIN_4;
@@ -557,17 +557,10 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_0;
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_0|LL_GPIO_PIN_1;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /**/
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_1;
-  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
-  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
   LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /**/
@@ -598,9 +591,9 @@ void led_blink(uint8_t cnt)
 {
 	for (uint8_t i = 0; i < cnt; i++)
 	{
-		LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_13);
+		LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1);
 		LL_mDelay(200);
-		LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_13);
+		LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1);
 		LL_mDelay(200);
 	}
 }
