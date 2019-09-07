@@ -167,10 +167,10 @@ int main(void)
     /* Start pulse generation */
     /**************************/
     /* Enable channel 1 */
-    LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1);	// ???
-    LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1N);
+    LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1);
+    //LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1N);
 
-    /* Enable TIM3 outputs */
+    /* Enable TIM1 outputs */
     LL_TIM_EnableAllOutputs(TIM1);
 
     /* Enable auto-reload register preload */
@@ -181,10 +181,14 @@ int main(void)
     // Set Potentiometer to 0
     LL_TIM_DisableCounter(TIM1);
 	LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0);	// count down
-	LL_TIM_SetRepetitionCounter(TIM1, 99);
+	LL_TIM_SetRepetitionCounter(TIM1, 100);
 	LL_TIM_GenerateEvent_UPDATE(TIM1);	// update RCR
 	flag_pulse = 1;
 	LL_TIM_EnableCounter(TIM1);
+	while (flag_pulse)
+	{
+		LL_mDelay(4);
+	}
 
   /* USER CODE END 2 */
 
@@ -407,18 +411,10 @@ static void MX_TIM1_Init(void)
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
-  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOB);
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOA);
   /**TIM1 GPIO Configuration  
-  PB13   ------> TIM1_CH1N
   PA8   ------> TIM1_CH1 
   */
-  GPIO_InitStruct.Pin = LL_GPIO_PIN_13;
-  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
-  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
-  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
   GPIO_InitStruct.Pin = LL_GPIO_PIN_8;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
