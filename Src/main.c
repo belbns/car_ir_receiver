@@ -48,7 +48,7 @@ typedef union {
 #define CODES_MAX		25
 #define PULSES_MAX		99
 // duration connected state of Potentiometer, mS
-#define KEY_PULSE		150
+#define KEY_PULSE		200
 
 /* USER CODE END PD */
 
@@ -276,12 +276,13 @@ int main(void)
 					  {
 						  LL_mDelay(4);
 					  }
-					  // connect Potentiometer out
-					  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
-					  LL_mDelay(KEY_PULSE);
-					  // break Potentiometer out
-					  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);
 				  }
+				  // connect Potentiometer out
+				  LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_1);
+				  LL_mDelay(KEY_PULSE);
+				  // break Potentiometer out
+				  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_1);
+
 				  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1);
 			  }
 		  }
